@@ -18,6 +18,11 @@ db = SQLAlchemy(app)
 # DATABASE MODELS
 # ==========================
 
+band_albums = db.Table(
+    'band_albums',
+    db.Column('BandID', db.Integer, db.ForeignKey('bands.BandID'), primary_key=True),
+    db.Column('AlbumID', db.Integer, db.ForeignKey('albums.AlbumID'), primary_key=True)
+)
 
 class Bands(db.Model):
     BandID = db.Column(db.Integer, primary_key=True)
@@ -27,7 +32,8 @@ class Bands(db.Model):
     # Relationship: One band has many members + albums
     # members = db.relationship('Members', backref='band', lazy=True)
     memberships = db.relationship('Memberships', backref='band', lazy=True)
-    albums = db.relationship('Albums', backref='band', lazy=True)
+    # many-to-many to Albums
+    albums = db.relationship('Albums', secondary=band_albums, back_populates='bands', lazy='dynamic')
 
 
 class Members(db.Model):
@@ -51,10 +57,12 @@ class Memberships(db.Model):
 
 class Albums(db.Model):
     AlbumID = db.Column(db.Integer, primary_key=True)
-    BandID = db.Column(db.Integer, db.ForeignKey(
-        'bands.BandID'), nullable=False)
     AlbumTitle = db.Column(db.String(80), nullable=False)
     ReleaseYear = db.Column(db.Integer)
+    # many-to-many to Bands
+    bands = db.relationship('Bands', secondary=band_albums, back_populates='albums', lazy='dynamic')
+
+
 
 # ==========================
 # ROUTES
@@ -101,13 +109,18 @@ def add_album():
     if request.method == 'POST':
         new_album = Albums(
             AlbumTitle=request.form['albumtitle'],
-            ReleaseYear=request.form['releaseyear'],
-            BandID=request.form['bandid']
+            ReleaseYear=request.form.get('releaseyear') or None
         )
+        selected_band_ids = request.form.getlist('bandid')  # expect multiple selection in form
+        for bid in selected_band_ids:
+            band = Bands.query.get(int(bid))
+            if band:
+                new_album.bands.append(band)
         db.session.add(new_album)
         db.session.commit()
         return redirect(url_for('index'))
     return render_template('add_album.html', bands=bands)
+
 
 
 @app.route('/bands/view')
